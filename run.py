@@ -3,6 +3,7 @@
 Main script to run the Price Scraper application
 """
 import sys
+import os
 import logging
 
 # Configure logging
@@ -32,12 +33,15 @@ def main():
         logger.info("API documentation at http://localhost:8000/docs")
         logger.info("Press CTRL+C to stop the server")
         
+        # Determine if we're in development or production
+        is_development = os.getenv("ENVIRONMENT", "development") == "development"
+        
         # Run the application
         uvicorn.run(
             "backend.api.main:app",
             host=API_HOST,
             port=API_PORT,
-            reload=True,
+            reload=is_development,
             log_level="info"
         )
         

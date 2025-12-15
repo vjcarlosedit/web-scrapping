@@ -214,6 +214,24 @@ class MercadoLibreScraper(BaseScraper):
                     except ValueError:
                         pass
             
+            # Fallback 2: Try to find any price in the page
+            if not price:
+                # Look for any span with price-like content
+                all_price_spans = soup.find_all('span', class_=re.compile(r'money|price', re.I))
+                for span in all_price_spans:
+                    text = span.get_text().strip()
+                    # Check if it looks like a price (contains numbers and currency symbols)
+                    if re.search(r'\d+', text) and ('$' in text or 'MXN' in text or 'MX' in text):
+                        price_clean = re.sub(r'[^\d.]', '', text.replace(',', ''))
+                        try:
+                            candidate_price = float(price_clean)
+                            if candidate_price > 0 and candidate_price < 10000000:  # Reasonable price range
+                                price = candidate_price
+                                logger.info(f"Found price via fallback method: {price}")
+                                break
+                        except ValueError:
+                            continue
+            
             # Extract currency
             currency = "MXN"  # Default for Mexico
             currency_elem = soup.find('meta', {'property': 'og:price:currency'})
