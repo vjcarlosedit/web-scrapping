@@ -232,6 +232,61 @@ class MercadoLibreScraper(BaseScraper):
                         except ValueError:
                             continue
             
+            # Fallback 3: Search in JSON-LD structured data
+            if not price:
+                json_ld_scripts = soup.find_all('script', type='application/ld+json')
+                for script in json_ld_scripts:
+                    try:
+                        import json
+                        data = json.loads(script.string)
+                        if isinstance(data, dict):
+                            # Try to find price in offers
+                            if 'offers' in data:
+                                offers = data['offers']
+                                if isinstance(offers, dict) and 'price' in offers:
+                                    try:
+                                        price = float(offers['price'])
+                                        logger.info(f"Found price via JSON-LD: {price}")
+                                        break
+                                    except (ValueError, TypeError):
+                                        pass
+                    except (json.JSONDecodeError, AttributeError, TypeError):
+                        continue
+            
+            # Fallback 4: Search in page text using regex patterns
+            if not price:
+                page_text = soup.get_text()
+                # Look for price patterns like $12,345.67 or MXN 12345
+                price_patterns = [
+                    r'\$\s*([\d,]+\.?\d*)',
+                    r'MXN\s*([\d,]+\.?\d*)',
+                    r'([\d,]+\.?\d*)\s*(?:pesos|MXN|MX\$)',
+                ]
+                for pattern in price_patterns:
+                    matches = re.findall(pattern, page_text, re.IGNORECASE)
+                    for match in matches:
+                        try:
+                            price_clean = match.replace(',', '')
+                            candidate_price = float(price_clean)
+                            if candidate_price > 0 and candidate_price < 10000000:
+                                price = candidate_price
+                                logger.info(f"Found price via text regex: {price}")
+                                break
+                        except ValueError:
+                            continue
+                    if price:
+                        break
+            
+            # Log debug info if still no price found
+            if not price:
+                logger.warning("Could not extract price using any method. HTML structure may have changed.")
+                # Try to save a sample of the HTML for debugging (first 2000 chars)
+                try:
+                    html_sample = str(soup)[:2000]
+                    logger.debug(f"HTML sample: {html_sample}")
+                except:
+                    pass
+            
             # Extract currency
             currency = "MXN"  # Default for Mexico
             currency_elem = soup.find('meta', {'property': 'og:price:currency'})
