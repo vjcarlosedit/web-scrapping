@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Price Tracker Dashboard</title>
+    <link rel="stylesheet" href="/static/styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <h1>📊 Price Tracker Dashboard</h1>
+            <p class="subtitle">Rastrea precios de Amazon y Mercado Libre</p>
+        </header>
+
+        <!-- Stats Cards -->
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-value" id="totalProducts">0</div>
+                <div class="stat-label">Productos Rastreados</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="totalRecords">0</div>
+                <div class="stat-label">Registros de Precios</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="checkedToday">0</div>
+                <div class="stat-label">Revisados Hoy</div>
+            </div>
+        </div>
+
+        <!-- Add Product Section -->
+        <div class="section">
+            <h2>➕ Añadir Producto</h2>
+            <div class="add-product-form">
+                <input 
+                    type="text" 
+                    id="productUrl" 
+                    placeholder="Ingresa la URL del producto (Amazon o Mercado Libre)"
+                    class="input-url"
+                >
+                <button onclick="addProduct()" class="btn btn-primary">
+                    Añadir Producto
+                </button>
+                <button onclick="scrapeAll()" class="btn btn-secondary">
+                    🔄 Actualizar Todos
+                </button>
+            </div>
+            <div id="addProductMessage" class="message"></div>
+        </div>
+
+        <!-- Products List -->
+        <div class="section">
+            <h2>📦 Productos</h2>
+            <div id="productsList" class="products-grid">
+                <div class="loading">Cargando productos...</div>
+            </div>
+        </div>
+
+        <!-- Price History Modal -->
+        <div id="historyModal" class="modal">
+            <div class="modal-content">
+                <span class="close" onclick="closeModal()">&times;</span>
+                <h2 id="modalTitle">Historial de Precios</h2>
+                <div class="chart-container">
+                    <canvas id="priceChart"></canvas>
+                </div>
+                <div id="priceStats" class="price-stats"></div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>
+
