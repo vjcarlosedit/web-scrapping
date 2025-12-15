@@ -156,9 +156,24 @@ class MercadoLibreScraper(BaseScraper):
             
             soup = BeautifulSoup(response.content, 'html5lib')
             
-            # Extract title
-            title_elem = soup.find('h1', class_='ui-pdp-title')
-            name = title_elem.get_text().strip() if title_elem else "Unknown Product"
+            # Extract title - try multiple selectors
+            name = "Unknown Product"
+            title_selectors = [
+                ('h1', {'class': 'ui-pdp-title'}),
+                ('h1', {'class': re.compile(r'pdp|title', re.I)}),
+                ('h1', {}),
+                ('meta', {'property': 'og:title'}),
+                ('title', {}),
+            ]
+            for tag, attrs in title_selectors:
+                elem = soup.find(tag, attrs) if attrs else soup.find(tag)
+                if elem:
+                    if tag == 'meta':
+                        name = elem.get('content', '').strip()
+                    else:
+                        name = elem.get_text().strip()
+                    if name and name != "Unknown Product" and len(name) > 5:
+                        break
             
             # Extract price - prioritize discounted/promotional price
             price = None
@@ -214,10 +229,11 @@ class MercadoLibreScraper(BaseScraper):
                     except ValueError:
                         pass
             
-            # Fallback 2: Try to find any price in the page
+            # Fallback 2: Try to find any price in the page (filtering small values)
             if not price:
                 # Look for any span with price-like content
                 all_price_spans = soup.find_all('span', class_=re.compile(r'money|price', re.I))
+                candidates = []
                 for span in all_price_spans:
                     text = span.get_text().strip()
                     # Check if it looks like a price (contains numbers and currency symbols)
@@ -225,12 +241,16 @@ class MercadoLibreScraper(BaseScraper):
                         price_clean = re.sub(r'[^\d.]', '', text.replace(',', ''))
                         try:
                             candidate_price = float(price_clean)
-                            if candidate_price > 0 and candidate_price < 10000000:  # Reasonable price range
-                                price = candidate_price
-                                logger.info(f"Found price via fallback method: {price}")
-                                break
+                            # Filter out very small prices (likely errors) - minimum 100 pesos
+                            if candidate_price >= 100 and candidate_price < 10000000:
+                                candidates.append((candidate_price, span))
                         except ValueError:
                             continue
+                # Use the largest price found (usually the main price)
+                if candidates:
+                    candidates.sort(reverse=True, key=lambda x: x[0])
+                    price = candidates[0][0]
+                    logger.info(f"Found price via fallback method: {price}")
             
             # Fallback 3: Search in JSON-LD structured data
             if not price:
@@ -253,7 +273,7 @@ class MercadoLibreScraper(BaseScraper):
                     except (json.JSONDecodeError, AttributeError, TypeError):
                         continue
             
-            # Fallback 4: Search in page text using regex patterns
+            # Fallback 4: Search in page text using regex patterns (with minimum price filter)
             if not price:
                 page_text = soup.get_text()
                 # Look for price patterns like $12,345.67 or MXN 12345
@@ -262,20 +282,22 @@ class MercadoLibreScraper(BaseScraper):
                     r'MXN\s*([\d,]+\.?\d*)',
                     r'([\d,]+\.?\d*)\s*(?:pesos|MXN|MX\$)',
                 ]
+                candidates = []
                 for pattern in price_patterns:
                     matches = re.findall(pattern, page_text, re.IGNORECASE)
                     for match in matches:
                         try:
                             price_clean = match.replace(',', '')
                             candidate_price = float(price_clean)
-                            if candidate_price > 0 and candidate_price < 10000000:
-                                price = candidate_price
-                                logger.info(f"Found price via text regex: {price}")
-                                break
+                            # Filter out very small prices (minimum 100 pesos)
+                            if candidate_price >= 100 and candidate_price < 10000000:
+                                candidates.append(candidate_price)
                         except ValueError:
                             continue
-                    if price:
-                        break
+                # Use the largest price found (usually the main product price)
+                if candidates:
+                    price = max(candidates)
+                    logger.info(f"Found price via text regex: {price}")
             
             # Log debug info if still no price found
             if not price:
