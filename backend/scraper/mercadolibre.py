@@ -70,8 +70,15 @@ class MercadoLibreScraper(BaseScraper):
             logger.info(f"Fetching product data from API: {api_url}")
             response = requests.get(api_url, headers=headers, timeout=10)
             
+            # Log detailed response info for debugging
+            logger.info(f"API Response Status: {response.status_code}")
+            logger.info(f"API Response Headers: {dict(response.headers)}")
+            if response.status_code != 200:
+                logger.warning(f"API Error Response Body (first 500 chars): {response.text[:500]}")
+            
             # If we get 403, try the visits endpoint which is less restrictive
             if response.status_code == 403:
+                logger.warning(f"🔒 BLOCKED: Mercado Libre API returned 403 Forbidden. IP may be blocked.")
                 # Try alternative: get product through visits/items endpoint
                 api_url_alt = f"{self.base_api_url}/visits/items?ids={product_id}"
                 response_alt = requests.get(api_url_alt, headers=headers, timeout=10)
@@ -152,9 +159,30 @@ class MercadoLibreScraper(BaseScraper):
             
             logger.info(f"Scraping HTML from: {url}")
             response = requests.get(url, headers=headers, timeout=15)
+            
+            # Log detailed response info for debugging
+            logger.info(f"HTML Response Status: {response.status_code}")
+            logger.info(f"HTML Response Headers: {dict(response.headers)}")
+            
+            if response.status_code == 403:
+                logger.error(f"🔒 BLOCKED: Mercado Libre HTML returned 403 Forbidden. IP is likely blocked.")
+                logger.error(f"Response Body (first 500 chars): {response.text[:500]}")
+                return None
+            
+            if response.status_code != 200:
+                logger.warning(f"HTML Error Status: {response.status_code}")
+                logger.warning(f"HTML Error Response (first 500 chars): {response.text[:500]}")
+            
             response.raise_for_status()
             
             soup = BeautifulSoup(response.content, 'html5lib')
+            
+            # Log page title to verify we got actual content
+            page_title = soup.find('title')
+            if page_title:
+                logger.info(f"Page Title: {page_title.get_text()[:100]}")
+            else:
+                logger.warning("No page title found - may indicate blocking or incorrect page")
             
             # Extract title - try multiple selectors
             name = "Unknown Product"
@@ -301,13 +329,32 @@ class MercadoLibreScraper(BaseScraper):
             
             # Log debug info if still no price found
             if not price:
-                logger.warning("Could not extract price using any method. HTML structure may have changed.")
+                logger.warning("⚠️ Could not extract price using any method. HTML structure may have changed or page was blocked.")
+                
+                # Check if page looks like it was blocked (contains block messages)
+                page_text = soup.get_text().lower()
+                block_indicators = ['acceso denegado', 'access denied', 'bloqueado', 'blocked', 'captcha', 'verificación']
+                for indicator in block_indicators:
+                    if indicator in page_text:
+                        logger.error(f"🚫 BLOCK DETECTED: Page contains '{indicator}' - Mercado Libre is likely blocking this IP")
+                        break
+                
                 # Try to save a sample of the HTML for debugging (first 2000 chars)
                 try:
                     html_sample = str(soup)[:2000]
                     logger.debug(f"HTML sample: {html_sample}")
                 except:
                     pass
+                
+                # Log what selectors we tried and found
+                price_container = soup.find('div', class_='ui-pdp-price')
+                if price_container:
+                    logger.info(f"✓ Found price container div")
+                else:
+                    logger.warning("✗ Price container div not found")
+                    
+                all_fractions = soup.find_all('span', class_='andes-money-amount__fraction')
+                logger.info(f"Found {len(all_fractions)} price fraction spans")
             
             # Extract currency
             currency = "MXN"  # Default for Mexico
